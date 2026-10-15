@@ -19,6 +19,7 @@
 
 # production
 /build
+/demo/
 
 # misc
 .DS_Store
@@ -32,10 +33,17 @@ yarn-error.log*
 
 # env files (can opt-in for committing if needed)
 .env*
+!.env.example
 
 # vercel
 .vercel
 
 # typescript
 *.tsbuildinfo
+
+# local demo persistence
+.data/
+survey-draft.txt
+sde-tasks.json
+sde-titles.txt
 next-env.d.ts
