@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import { ErrorState, LoadingState } from "@/components/states";
 import type { AppEvent, PaymentScenario } from "@/lib/types";
+import { apiSend } from "@/lib/api-client";
 
 export default function ScenariosPage() {
   const [scenario, setScenario] = useState<PaymentScenario>("approved");
@@ -11,23 +12,29 @@ export default function ScenariosPage() {
   const [error, setError] = useState("");
   const [message, setMessage] = useState("");
   const [ready, setReady] = useState(false);
+  const [reloadKey, setReloadKey] = useState(0);
 
-  async function load() {
-    const response = await fetch("/api/scenarios");
-    const body = await response.json();
-    if (!response.ok) setError(body.error ?? "Only administrators can open scenarios.");
-    else {
-      setScenario(body.settings.paymentScenario);
-      setChallenge(body.settings.authChallengeResult);
-      setEvents(body.events);
-    }
-    setReady(true);
-  }
-  useEffect(() => { void load(); }, []);
+  useEffect(() => {
+    let active = true;
+    fetch("/api/scenarios").then(async (response) => {
+      const body = await response.json();
+      if (!active) return;
+      if (!response.ok) setError(body.error ?? "Only administrators can open scenarios.");
+      else {
+        setScenario(body.settings.paymentScenario);
+        setChallenge(body.settings.authChallengeResult);
+        setEvents(body.events);
+      }
+      setReady(true);
+    });
+    return () => {
+      active = false;
+    };
+  }, [reloadKey]);
 
   async function act(action: "advance" | "reset" | "settings") {
     setError("");
-    const response = await fetch("/api/scenarios", {
+    const response = await apiSend("/api/scenarios", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ action, paymentScenario: scenario, authChallengeResult: challenge }),
@@ -36,7 +43,7 @@ export default function ScenariosPage() {
     if (!response.ok) setError(body.error ?? "Could not update the simulation.");
     else {
       setMessage(action === "reset" ? "Demo data reset." : action === "advance" ? `Advanced ${body.moved ?? 0} shipments.` : "Scenario saved.");
-      void load();
+      setReloadKey((key) => key + 1);
     }
   }
 

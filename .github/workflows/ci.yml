@@ -1,0 +1,67 @@
+name: CI
+
+on:
+  push:
+    branches: [master]
+  pull_request:
+
+# The workflow only reads the repository.
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - uses: pnpm/action-setup@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+          cache: pnpm
+
+      # Exact versions from the committed lockfile; pnpm runs no dependency install scripts
+      # except the ones allowed in pnpm-workspace.yaml.
+      - name: Install
+        run: pnpm install --frozen-lockfile
+
+      - name: Lint
+        run: pnpm lint
+
+      - name: Typecheck
+        run: pnpm typecheck
+
+      - name: Unit and API security tests
+        run: pnpm test
+
+      - name: Audit runtime dependencies (blocking)
+        run: pnpm audit --prod --audit-level=moderate
+
+      - name: Audit all dependencies (report)
+        run: pnpm audit --audit-level=high
+        continue-on-error: true
+
+      - name: Build
+        run: pnpm build
+
+      - name: Smoke test the production server
+        env:
+          ACME_DATA_DIR: ${{ runner.temp }}/acme-data
+        run: |
+          # Production refuses to store data unencrypted: use a throw-away data key for this run.
+          export ACME_DATA_KEYS="k1:$(openssl rand -base64 32)"
+          pnpm start > "$RUNNER_TEMP/server.log" 2>&1 &
+          for attempt in $(seq 1 30); do
+            curl -fs http://localhost:3000/login > /dev/null && break
+            sleep 1
+          done
+          BASE_URL=http://localhost:3000 pnpm test:smoke

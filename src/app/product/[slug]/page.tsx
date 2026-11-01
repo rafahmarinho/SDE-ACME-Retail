@@ -5,6 +5,7 @@ import { useEffect, useState } from "react";
 import { formatMoney } from "@/lib/money";
 import { ErrorState, LoadingState } from "@/components/states";
 import { Swatch } from "@/components/swatch";
+import { apiSend } from "@/lib/api-client";
 
 interface VariantView {
   id: string;
@@ -42,7 +43,7 @@ export default function ProductPage() {
   async function add(kind: "cart" | "wishlist") {
     setError("");
     setMessage("");
-    const response = await fetch(kind === "cart" ? "/api/cart" : "/api/wishlist", {
+    const response = await apiSend(kind === "cart" ? "/api/cart" : "/api/wishlist", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(kind === "cart" ? { variantId: selected, qty } : { variantId: selected }),

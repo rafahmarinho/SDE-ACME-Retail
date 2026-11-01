@@ -20,32 +20,57 @@ export function ProductGrid({
   query?: { q?: string; category?: string };
 }) {
   const [rows, setRows] = useState<CatalogCard[]>([]);
+  const [nextCursor, setNextCursor] = useState<string | null>(null);
   const [categories, setCategories] = useState<string[]>([]);
   const [error, setError] = useState("");
-  const [loading, setLoading] = useState(true);
+  const [loadedKey, setLoadedKey] = useState<string | null>(null);
   const [sort, setSort] = useState("featured");
   const [inStock, setInStock] = useState(false);
   const [max, setMax] = useState("");
 
+  const params = new URLSearchParams();
+  if (query?.q) params.set("q", query.q);
+  if (query?.category) params.set("category", query.category);
+  if (sort) params.set("sort", sort);
+  if (inStock) params.set("inStock", "1");
+  if (max) params.set("max", String(Math.round(Number(max) * 100)));
+  const requestKey = params.toString();
+  const loading = loadedKey !== requestKey;
+
   useEffect(() => {
-    const params = new URLSearchParams();
-    if (query?.q) params.set("q", query.q);
-    if (query?.category) params.set("category", query.category);
-    if (sort) params.set("sort", sort);
-    if (inStock) params.set("inStock", "1");
-    if (max) params.set("max", String(Math.round(Number(max) * 100)));
-    setLoading(true);
-    fetch(`/api/catalog?${params}`)
+    let active = true;
+    fetch(`/api/catalog?${requestKey}`)
       .then(async (response) => {
         const body = await response.json();
         if (!response.ok) throw new Error(body.error ?? "Could not load the catalog.");
+        if (!active) return;
         setRows(body.products);
+        setNextCursor(body.nextCursor ?? null);
         setCategories(body.categories);
         setError("");
       })
-      .catch((reason: Error) => setError(reason.message))
-      .finally(() => setLoading(false));
-  }, [query?.q, query?.category, sort, inStock, max]);
+      .catch((reason: Error) => {
+        if (active) setError(reason.message);
+      })
+      .finally(() => {
+        if (active) setLoadedKey(requestKey);
+      });
+    return () => {
+      active = false;
+    };
+  }, [requestKey]);
+
+  // The catalog is paginated on the server; further pages are appended on request.
+  async function loadMore() {
+    if (!nextCursor) return;
+    const response = await fetch(`/api/catalog?${requestKey}${requestKey ? "&" : ""}cursor=${encodeURIComponent(nextCursor)}`);
+    const body = await response.json();
+    if (!response.ok) setError(body.error ?? "Could not load more products.");
+    else {
+      setRows((current) => [...current, ...body.products]);
+      setNextCursor(body.nextCursor ?? null);
+    }
+  }
 
   return (
     <section className="space-y-6">
@@ -84,6 +109,7 @@ export function ProductGrid({
           </Link>
         ))}
       </div>
+      {!loading && nextCursor ? <button className="btn secondary" type="button" onClick={() => void loadMore()}>Load more</button> : null}
     </section>
   );
 }

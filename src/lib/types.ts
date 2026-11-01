@@ -52,9 +52,18 @@ export interface User {
   fullName: string;
   role: Role;
   phone: string;
-  marketingOptIn: boolean;
   failedLogins: number;
+  lastFailedAt: string | null;
+  lockouts: number;
   lockedUntil: string | null;
+  mustChangePassword: boolean;
+  passwordChangedAt: string | null;
+  passwordHistory: string[];
+  lastLoginAt: string | null;
+  /** Second factor (TOTP). The secret is needed to verify codes; recovery codes are kept only as hashes. */
+  mfa: { secret: string; enabledAt: string; lastCounter: number; recoveryCodeHashes: string[] } | null;
+  /** Secret shown during enrollment, until the first valid code confirms it. */
+  mfaPending: { secret: string; createdAt: string } | null;
   createdAt: string;
 }
 
@@ -198,7 +207,17 @@ export interface ReturnRequest {
   items: ReturnItem[];
   status: "requested" | "approved" | "rejected" | "received" | "refunded";
   note: string;
-  photoName: string | null;
+  photoId: string | null;
+  createdAt: string;
+}
+
+export interface Upload {
+  id: string;
+  userId: string;
+  objectName: string;
+  contentType: string;
+  size: number;
+  returnId: string | null;
   createdAt: string;
 }
 
@@ -220,21 +239,16 @@ export interface AppEvent {
   message: string;
   orderId: string | null;
   actorId: string | null;
-}
-
-export interface MailMessage {
-  id: string;
-  to: string;
-  subject: string;
-  body: string;
-  createdAt: string;
-  sessionKey: string | null;
+  /** Audit chain (src/lib/audit.ts): hash of the previous event and of this one. */
+  prevHash?: string;
+  hash?: string;
 }
 
 export interface ResetToken {
   id: string;
   userId: string;
   tokenHash: string;
+  createdAt: string;
   expiresAt: string;
   usedAt: string | null;
 }
@@ -246,6 +260,51 @@ export interface Session {
   createdAt: string;
   expiresAt: string;
   lastSeenAt: string;
+  /** Last additional authentication (second factor or re-entered password) in this session. */
+  stepUpAt: string | null;
+}
+
+/**
+ * Privacy state of one account (src/services/privacy.ts): the notice decision, one consent entry
+ * per consent item and the checklist of restricted activities.
+ */
+export interface PrivacyRecord {
+  userId: string;
+  /** Notice version the decision applies to; consent for an older version no longer counts. */
+  noticeVersion: string | null;
+  decision: "accepted" | "declined" | null;
+  decidedAt: string | null;
+  /** Language preference sent with the decision (BCP 47 tag). */
+  language: string;
+  consents: Record<string, { granted: boolean; at: string; noticeVersion: string }>;
+  restrictions: Record<string, { restricted: boolean; at: string }>;
+}
+
+/** Append-only proof of every privacy decision: who, when, what, notice version and session. */
+export interface ConsentEvent {
+  id: string;
+  userId: string;
+  at: string;
+  action: "accept" | "decline" | "grant" | "withdraw" | "restrict" | "lift_restriction";
+  items: string[];
+  noticeVersion: string;
+  language: string;
+  evidence: { sessionRef: string; ip: string; userAgent: string };
+}
+
+/** Anti-automation challenge for the password reset page (src/lib/pow.ts). */
+export interface Challenge {
+  id: string;
+  salt: string;
+  difficulty: number;
+  expiresAt: string;
+  usedAt: string | null;
+}
+
+export interface ThrottleCounter {
+  key: string;
+  count: number;
+  resetAt: string;
 }
 
 export interface Settings {
@@ -270,9 +329,14 @@ export interface StoreData {
   returns: ReturnRequest[];
   refunds: Refund[];
   events: AppEvent[];
-  mail: MailMessage[];
+  uploads: Upload[];
   resetTokens: ResetToken[];
   sessions: Session[];
+  privacy: PrivacyRecord[];
+  consentLog: ConsentEvent[];
+  /** Shared rate-limit counters (keys are hashes, never raw IPs or e-mail addresses). */
+  throttle: ThrottleCounter[];
+  challenges: Challenge[];
   settings: Settings;
   orderSeq: number;
 }
@@ -283,7 +347,8 @@ export interface PublicUser {
   fullName: string;
   role: Role;
   phone: string;
-  marketingOptIn: boolean;
+  mustChangePassword: boolean;
+  mfaEnabled: boolean;
 }
 
 export function toPublicUser(user: User): PublicUser {
@@ -293,6 +358,7 @@ export function toPublicUser(user: User): PublicUser {
     fullName: user.fullName,
     role: user.role,
     phone: user.phone,
-    marketingOptIn: user.marketingOptIn,
+    mustChangePassword: Boolean(user.mustChangePassword),
+    mfaEnabled: Boolean(user.mfa),
   };
 }

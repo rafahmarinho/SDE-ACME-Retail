@@ -1,7 +1,35 @@
-import { hashSecret } from "./security";
+import { hashSecret, passwordIssues, sha256, UNUSABLE_PASSWORD } from "./security";
+import { securityLog } from "./security-log";
+import { can } from "./policy";
 import type { Address, Order, Product, Role, StoreData, User, Variant } from "./types";
 
-const DEMO_PASSWORD = "Retail123!";
+/**
+ * Initial password of the seeded accounts. It is never hard-coded: each deployment sets
+ * ACME_SEED_PASSWORD (it must pass the password policy) and every seeded account must replace it
+ * at first sign-in. Without it the seeded accounts have no usable password.
+ */
+function seedPassword(): string | null {
+  const value = process.env.ACME_SEED_PASSWORD;
+  if (!value) return null;
+  if (passwordIssues(value).length) {
+    securityLog({ type: "config.rejected", outcome: "blocked", detail: "ACME_SEED_PASSWORD does not meet the password policy." });
+    return null;
+  }
+  return value;
+}
+
+const seedHashes = new Map<string, Promise<string>>();
+
+function seedHash(userId: string, password: string | null): Promise<string> {
+  if (!password) return Promise.resolve(UNUSABLE_PASSWORD);
+  const key = `${userId}:${sha256(password)}`;
+  let hash = seedHashes.get(key);
+  if (!hash) {
+    hash = hashSecret(password);
+    seedHashes.set(key, hash);
+  }
+  return hash;
+}
 
 interface CatalogSeed {
   name: string;
@@ -109,17 +137,24 @@ function buildCatalog(): { products: Product[]; variants: Variant[] } {
   return { products, variants };
 }
 
-function user(id: string, email: string, fullName: string, role: Role, at: string): User {
+function user(id: string, email: string, fullName: string, role: Role, at: string, passwordHash: string): User {
   return {
     id,
     email,
-    passwordHash: hashSecret(DEMO_PASSWORD),
+    passwordHash,
     fullName,
     role,
     phone: "",
-    marketingOptIn: false,
     failedLogins: 0,
+    lastFailedAt: null,
+    lockouts: 0,
     lockedUntil: null,
+    mustChangePassword: true,
+    passwordChangedAt: null,
+    passwordHistory: [],
+    lastLoginAt: null,
+    mfa: null,
+    mfaPending: null,
     createdAt: at,
   };
 }
@@ -236,18 +271,22 @@ export const DEMO_ACCOUNTS = [
   { email: "sam.patel@acme-retail.test", role: "customer", name: "Sam Patel" },
 ] as const;
 
-export function buildSeed(): StoreData {
+export async function buildSeed(): Promise<StoreData> {
   const now = "2026-08-01T12:00:00.000Z";
-  const users = DEMO_ACCOUNTS.map((account, index) =>
-    user(`usr_${String(index + 1).padStart(2, "0")}`, account.email, account.name, account.role, now),
+  const initial = seedPassword();
+  const users = await Promise.all(
+    DEMO_ACCOUNTS.map(async (account, index) => {
+      const id = `usr_${String(index + 1).padStart(2, "0")}`;
+      return user(id, account.email, account.name, account.role, now, await seedHash(id, initial));
+    }),
   );
   const { products, variants } = buildCatalog();
-  const customerIds = users.filter((item) => item.role === "customer").map((item) => item.id);
+  const customerIds = users.filter((item) => can(item.role, "orders.purchase")).map((item) => item.id);
   return {
     version: 1,
     users,
     addresses: users
-      .filter((item) => item.role === "customer")
+      .filter((item) => can(item.role, "orders.purchase"))
       .map((item) => address(item.id, item.fullName, "San Francisco")),
     products,
     variants,
@@ -264,6 +303,7 @@ export function buildSeed(): StoreData {
     checkouts: [],
     returns: [],
     refunds: [],
+    uploads: [],
     events: [
       {
         id: "evt_seed",
@@ -274,9 +314,12 @@ export function buildSeed(): StoreData {
         actorId: null,
       },
     ],
-    mail: [],
     resetTokens: [],
     sessions: [],
+    privacy: [],
+    consentLog: [],
+    throttle: [],
+    challenges: [],
     settings: {
       paymentScenario: "approved",
       authChallengeResult: "approved",
@@ -286,5 +329,3 @@ export function buildSeed(): StoreData {
     orderSeq: 10060,
   };
 }
-
-export const DEMO_PASSWORD_HINT = DEMO_PASSWORD;

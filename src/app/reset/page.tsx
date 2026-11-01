@@ -1,25 +1,47 @@
 "use client";
 
-import { useRouter, useSearchParams } from "next/navigation";
-import { FormEvent, Suspense, useState } from "react";
+import { useRouter } from "next/navigation";
+import { FormEvent, useEffect, useState } from "react";
 import { ErrorState } from "@/components/states";
+import { apiSend } from "@/lib/api-client";
 
-function ResetForm() {
-  const params = useSearchParams();
+let pendingToken = "";
+
+/**
+ * The token arrives in the URL fragment, which browsers never send to the server or in the
+ * Referer header. It is moved into memory and removed from the address bar right away.
+ */
+function takeToken(): string {
+  const fromHash = new URLSearchParams(window.location.hash.slice(1)).get("token");
+  if (fromHash) {
+    pendingToken = fromHash;
+    window.history.replaceState(null, "", window.location.pathname);
+  }
+  return pendingToken;
+}
+
+export default function ResetPage() {
   const router = useRouter();
   const [error, setError] = useState("");
+
+  useEffect(() => {
+    takeToken();
+  }, []);
 
   async function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     const password = String(new FormData(event.currentTarget).get("password"));
-    const response = await fetch("/api/auth/reset", {
+    const response = await apiSend("/api/auth/reset", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ token: params.get("token"), password }),
+      body: JSON.stringify({ token: takeToken(), password }),
     });
     const body = await response.json();
     if (!response.ok) setError(body.error ?? "Could not reset the password.");
-    else router.push("/login");
+    else {
+      pendingToken = "";
+      router.push("/login");
+    }
   }
 
   return (
@@ -30,8 +52,4 @@ function ResetForm() {
       <button className="btn">Update password</button>
     </form>
   );
-}
-
-export default function ResetPage() {
-  return <Suspense><ResetForm /></Suspense>;
 }

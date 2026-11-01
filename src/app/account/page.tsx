@@ -1,11 +1,14 @@
 "use client";
 
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 import { ErrorState, LoadingState } from "@/components/states";
 import type { PublicUser } from "@/lib/types";
+import { apiSend } from "@/lib/api-client";
 
 export default function AccountPage() {
+  const router = useRouter();
   const [user, setUser] = useState<PublicUser | null>(null);
   const [error, setError] = useState("");
 
@@ -18,8 +21,9 @@ export default function AccountPage() {
   }, []);
 
   async function logout() {
-    await fetch("/api/auth/logout", { method: "POST" });
-    window.location.href = "/";
+    await apiSend("/api/auth/logout", { method: "POST", headers: { "Content-Type": "application/json" } });
+    router.replace("/");
+    router.refresh();
   }
 
   if (!user && !error) return <LoadingState label="Loading account..." />;
@@ -30,6 +34,7 @@ export default function AccountPage() {
       <p className="text-muted">{user.email} · {user.role}</p>
       <div className="flex flex-wrap gap-2">
         <Link className="btn secondary" href="/account/profile">Profile</Link>
+        <Link className="btn secondary" href="/account/privacy">Privacy</Link>
         <Link className="btn secondary" href="/account/settings">Settings</Link>
         <Link className="btn secondary" href="/account/orders">Orders</Link>
         <Link className="btn secondary" href="/account/returns">Returns</Link>

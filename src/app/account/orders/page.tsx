@@ -8,24 +8,50 @@ import type { Order } from "@/lib/types";
 
 export default function OrdersPage() {
   const [orders, setOrders] = useState<Order[]>([]);
+  const [nextCursor, setNextCursor] = useState<string | null>(null);
+  const [total, setTotal] = useState(0);
   const [error, setError] = useState("");
-  const [loading, setLoading] = useState(true);
+  const [loadedKey, setLoadedKey] = useState<string | null>(null);
   const [payment, setPayment] = useState("");
   const [delivery, setDelivery] = useState("");
 
-  useEffect(() => {
-    fetch("/api/orders")
-      .then(async (response) => {
-        const body = await response.json();
-        if (!response.ok) throw new Error(body.error ?? "Could not load orders.");
-        setOrders(body);
-      })
-      .catch((reason: Error) => setError(reason.message))
-      .finally(() => setLoading(false));
-  }, []);
+  // Filters and paging run on the server; the page shows one bounded page at a time.
+  const params = new URLSearchParams({ limit: "20" });
+  if (payment) params.set("payment", payment);
+  if (delivery) params.set("delivery", delivery);
+  const requestKey = params.toString();
 
-  const visible = orders.filter((order) => (!payment || order.paymentStatus === payment) && (!delivery || order.deliveryStatus === delivery));
-  if (loading) return <LoadingState label="Loading orders..." />;
+  useEffect(() => {
+    let active = true;
+    fetch(`/api/orders?${requestKey}`).then(async (response) => {
+      const body = await response.json();
+      if (!active) return;
+      if (!response.ok) setError(body.error ?? "Could not load orders.");
+      else {
+        setOrders(body.items);
+        setNextCursor(body.nextCursor);
+        setTotal(body.total);
+        setError("");
+      }
+      setLoadedKey(requestKey);
+    });
+    return () => {
+      active = false;
+    };
+  }, [requestKey]);
+
+  async function loadMore() {
+    if (!nextCursor) return;
+    const response = await fetch(`/api/orders?${requestKey}&cursor=${encodeURIComponent(nextCursor)}`);
+    const body = await response.json();
+    if (!response.ok) setError(body.error ?? "Could not load more orders.");
+    else {
+      setOrders((current) => [...current, ...body.items]);
+      setNextCursor(body.nextCursor);
+    }
+  }
+
+  if (loadedKey === null) return <LoadingState label="Loading orders..." />;
   return (
     <section className="space-y-4">
       <h1 className="text-3xl font-semibold">Orders</h1>
@@ -40,13 +66,15 @@ export default function OrdersPage() {
         </select>
       </div>
       {error ? <ErrorState message={error} /> : null}
-      {visible.length === 0 ? <EmptyState title="No orders" body="Orders you place will stay here after a reload." /> : null}
-      {visible.map((order) => (
+      {orders.length === 0 ? <EmptyState title="No orders" body="Orders you place will stay here after a reload." /> : null}
+      {orders.map((order) => (
         <Link key={order.id} href={`/account/orders/${order.id}`} className="panel block p-4">
           <div className="flex justify-between"><strong>{order.number}</strong><span>{formatMoney(order.totalCents)}</span></div>
           <p className="text-sm text-muted">Payment: {order.paymentStatus} · Delivery: {order.deliveryStatus}</p>
         </Link>
       ))}
+      {orders.length > 0 ? <p className="text-sm text-muted">Showing {orders.length} of {total}.</p> : null}
+      {nextCursor ? <button className="btn secondary" type="button" onClick={() => void loadMore()}>Load more</button> : null}
     </section>
   );
 }

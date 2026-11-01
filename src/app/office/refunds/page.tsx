@@ -4,26 +4,36 @@ import { FormEvent, useEffect, useState } from "react";
 import { formatMoney } from "@/lib/money";
 import { ErrorState, LoadingState } from "@/components/states";
 import type { Order, Refund } from "@/lib/types";
+import { apiSend } from "@/lib/api-client";
 
 export default function RefundsPage() {
   const [orders, setOrders] = useState<Order[]>([]);
   const [refunds, setRefunds] = useState<Refund[]>([]);
   const [error, setError] = useState("");
   const [ready, setReady] = useState(false);
+  const [reloadKey, setReloadKey] = useState(0);
 
-  async function load() {
-    const [orderResponse, refundResponse] = await Promise.all([fetch("/api/office/orders"), fetch("/api/office/refunds")]);
-    if (orderResponse.ok) setOrders(await orderResponse.json());
-    else setError("You do not have access to refunds.");
-    if (refundResponse.ok) setRefunds(await refundResponse.json());
-    setReady(true);
-  }
-  useEffect(() => { void load(); }, []);
+  useEffect(() => {
+    let active = true;
+    // Only refundable orders are requested; both lists are filtered and bounded on the server.
+    Promise.all([fetch("/api/office/orders?payment=approved,partially_refunded&limit=100"), fetch("/api/office/refunds?limit=50")]).then(async ([orderResponse, refundResponse]) => {
+      const nextOrders = orderResponse.ok ? (await orderResponse.json()).items : null;
+      const nextRefunds = refundResponse.ok ? (await refundResponse.json()).items : null;
+      if (!active) return;
+      if (nextOrders) setOrders(nextOrders);
+      else setError("You do not have access to refunds.");
+      if (nextRefunds) setRefunds(nextRefunds);
+      setReady(true);
+    });
+    return () => {
+      active = false;
+    };
+  }, [reloadKey]);
 
   async function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     const form = new FormData(event.currentTarget);
-    const response = await fetch("/api/office/refunds", {
+    const response = await apiSend("/api/office/refunds", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
@@ -34,11 +44,11 @@ export default function RefundsPage() {
     });
     const body = await response.json();
     if (!response.ok) setError(body.error ?? "Could not refund.");
-    else void load();
+    else setReloadKey((key) => key + 1);
   }
 
   if (!ready) return <LoadingState label="Loading refunds..." />;
-  const payable = orders.filter((order) => order.paymentStatus === "approved" || order.paymentStatus === "partially_refunded");
+  const payable = orders;
   return (
     <section className="grid gap-6 md:grid-cols-2">
       <form className="panel space-y-3 p-5" onSubmit={(event) => void submit(event)}>

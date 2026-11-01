@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useEffect, useState } from "react";
 import { formatMoney } from "@/lib/money";
 import { ErrorState, LoadingState } from "@/components/states";
+import { apiSend } from "@/lib/api-client";
 
 interface CartResponse {
   items: { qty: number; lineCents: number; product: { name: string; slug: string }; variant: { id: string; label: string } }[];
@@ -14,17 +15,21 @@ export default function CartPage() {
   const [cart, setCart] = useState<CartResponse | null>(null);
   const [error, setError] = useState("");
 
-  async function load() {
-    const response = await fetch("/api/cart");
-    const body = await response.json();
-    if (!response.ok) setError(body.error ?? "Could not load the cart.");
-    else setCart(body);
-  }
-
-  useEffect(() => { void load(); }, []);
+  useEffect(() => {
+    let active = true;
+    fetch("/api/cart").then(async (response) => {
+      const body = await response.json();
+      if (!active) return;
+      if (!response.ok) setError(body.error ?? "Could not load the cart.");
+      else setCart(body);
+    });
+    return () => {
+      active = false;
+    };
+  }, []);
 
   async function update(variantId: string, qty: number) {
-    const response = await fetch("/api/cart", {
+    const response = await apiSend("/api/cart", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ variantId, qty }),

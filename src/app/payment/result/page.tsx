@@ -5,6 +5,7 @@ import { useSearchParams } from "next/navigation";
 import { Suspense, useEffect, useState } from "react";
 import { formatMoney } from "@/lib/money";
 import { ErrorState, LoadingState } from "@/components/states";
+import { apiSend } from "@/lib/api-client";
 
 function Result() {
   const params = useSearchParams();
@@ -13,18 +14,22 @@ function Result() {
   const [error, setError] = useState("");
   const [message, setMessage] = useState("");
 
-  async function load() {
+  useEffect(() => {
     if (!orderId) return;
-    const response = await fetch(`/api/orders/${orderId}`);
-    const body = await response.json();
-    if (!response.ok) setError(body.error ?? "Could not load the payment result.");
-    else setOrder(body.order);
-  }
-
-  useEffect(() => { void load(); }, [orderId]);
+    let active = true;
+    fetch(`/api/orders/${orderId}`).then(async (response) => {
+      const body = await response.json();
+      if (!active) return;
+      if (!response.ok) setError(body.error ?? "Could not load the payment result.");
+      else setOrder(body.order);
+    });
+    return () => {
+      active = false;
+    };
+  }, [orderId]);
 
   async function authenticate() {
-    const response = await fetch(`/api/orders/${orderId}/authenticate`, { method: "POST" });
+    const response = await apiSend(`/api/orders/${orderId}/authenticate`, { method: "POST", headers: { "Content-Type": "application/json" } });
     const body = await response.json();
     if (!response.ok) setError(body.error ?? "Authentication could not be completed.");
     else {

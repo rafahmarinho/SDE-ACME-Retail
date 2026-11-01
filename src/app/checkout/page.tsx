@@ -1,10 +1,27 @@
 "use client";
 
 import { useRouter } from "next/navigation";
-import { FormEvent, useEffect, useState } from "react";
+import { FormEvent, useEffect, useState, type ReactNode } from "react";
+import Link from "next/link";
 import { formatMoney } from "@/lib/money";
 import { ErrorState, LoadingState } from "@/components/states";
 import type { PaymentScenario } from "@/lib/types";
+import { FIELD_PURPOSES } from "@/lib/privacy";
+import { apiSend } from "@/lib/api-client";
+
+type AddressField = "fullName" | "line1" | "city" | "region" | "postalCode";
+
+/** Label that says whether the field is mandatory and why it is collected (also as a tooltip). */
+function FieldLabel({ field, label, children }: { field: AddressField; label: string; children: ReactNode }) {
+  const purpose = FIELD_PURPOSES[field];
+  return (
+    <label className="block text-sm" title={purpose.why}>
+      {label} <span className="text-muted">({purpose.required ? "required" : "optional"})</span>
+      {children}
+      <span className="mt-1 block text-xs text-muted">{purpose.why}</span>
+    </label>
+  );
+}
 
 export default function CheckoutPage() {
   const router = useRouter();
@@ -16,13 +33,17 @@ export default function CheckoutPage() {
   const [scenario, setScenario] = useState<PaymentScenario>("approved");
   const [coupon, setCoupon] = useState("");
   const [method, setMethod] = useState<"standard" | "express">("standard");
+  const [privacyAccepted, setPrivacyAccepted] = useState(false);
 
   useEffect(() => {
-    Promise.all([fetch("/api/cart"), fetch("/api/session")]).then(async ([cartResponse, sessionResponse]) => {
+    Promise.all([fetch("/api/cart"), fetch("/api/session"), fetch("/api/account/privacy")]).then(async ([cartResponse, sessionResponse, privacyResponse]) => {
       const cart = await cartResponse.json();
       const session = await sessionResponse.json();
+      const privacy = privacyResponse.ok ? await privacyResponse.json() : null;
       setSubtotal(cart.subtotalCents ?? 0);
       setStripe(Boolean(session.stripe));
+      // Shipping details are collected only after the privacy notice is accepted (the server enforces it too).
+      setPrivacyAccepted(Boolean(privacy?.accepted));
       if (!session.user) router.push("/login?next=/checkout");
       setReady(true);
     });
@@ -33,7 +54,7 @@ export default function CheckoutPage() {
     setLoading(true);
     setError("");
     const form = new FormData(event.currentTarget);
-    const response = await fetch("/api/checkout", {
+    const response = await apiSend("/api/checkout", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
@@ -66,6 +87,15 @@ export default function CheckoutPage() {
   }
 
   if (!ready) return <LoadingState label="Preparing checkout..." />;
+  if (!privacyAccepted) {
+    return (
+      <section className="panel mx-auto max-w-xl space-y-3 p-6">
+        <h1 className="text-2xl font-semibold">Before we ask for your address</h1>
+        <p className="text-sm">We need your name and shipping address to deliver the order. Review the privacy notice and decide on the optional uses of your information first.</p>
+        <Link className="btn" href="/account/privacy?next=/checkout">Review and decide</Link>
+      </section>
+    );
+  }
   const shipping = method === "express" ? 1495 : subtotal >= 7500 || coupon.toUpperCase() === "FREESHIP" ? 0 : 595;
   const discount = coupon.toUpperCase() === "WELCOME10" ? Math.round(subtotal * 0.1) : coupon.toUpperCase() === "SAVE5" && subtotal >= 2000 ? 500 : 0;
   const tax = Math.round((subtotal - discount) * 0.0825);
@@ -76,12 +106,12 @@ export default function CheckoutPage() {
         <h1 className="text-2xl font-semibold">Checkout</h1>
         <p className="text-sm text-muted">Stock is reserved for 15 minutes. The price shown here is the price saved on the order.</p>
         {error ? <ErrorState message={error} /> : null}
-        <input className="field" name="fullName" placeholder="Full name" required />
-        <input className="field" name="line1" placeholder="Street address" required />
+        <FieldLabel field="fullName" label="Full name"><input className="field mt-1" name="fullName" required /></FieldLabel>
+        <FieldLabel field="line1" label="Street address"><input className="field mt-1" name="line1" required /></FieldLabel>
         <div className="grid gap-3 sm:grid-cols-3">
-          <input className="field" name="city" placeholder="City" required />
-          <input className="field" name="region" placeholder="State" defaultValue="CA" required />
-          <input className="field" name="postalCode" placeholder="Postal code" required />
+          <FieldLabel field="city" label="City"><input className="field mt-1" name="city" required /></FieldLabel>
+          <FieldLabel field="region" label="State"><input className="field mt-1" name="region" defaultValue="CA" required /></FieldLabel>
+          <FieldLabel field="postalCode" label="Postal code"><input className="field mt-1" name="postalCode" required /></FieldLabel>
         </div>
         <label className="block text-sm">Shipping
           <select className="field mt-1" value={method} onChange={(event) => setMethod(event.target.value as "standard" | "express")}>

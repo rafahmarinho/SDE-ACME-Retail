@@ -1,0 +1,52 @@
+/**
+ * Built-in list of common passwords and dictionary base words that cannot be used, compared after
+ * lower-casing, undoing common character substitutions (p@ssw0rd -> password) and removing digits
+ * and symbols. Administrators can add organization-specific words with PASSWORD_BLOCKLIST.
+ * Sources: the most frequent entries of public breach corpora (NCSC top passwords, RockYou) and
+ * common English words used in passwords (NIST SP 800-63B, 5.1.1.2).
+ */
+export const COMMON_PASSWORD_WORDS: readonly string[] = [
+  "password", "passwort", "passwd", "pass", "passcode", "passphrase", "secret", "secure", "security",
+  "welcome", "letmein", "admin", "administrator", "root", "user", "username", "login", "logon",
+  "default", "changeme", "change", "guest", "test", "testing", "tester", "demo", "sample", "example",
+  "temp", "temporary", "access", "account", "service", "support", "private", "public", "master",
+  "qwerty", "qwertyuiop", "qwertz", "azerty", "asdf", "asdfgh", "asdfghjkl", "zxcvbn", "zxcvbnm",
+  "qazwsx", "qazwsxedc", "wsxedc", "zaqxsw", "abc", "abcd", "abcdef", "abcdefg", "abcdefgh",
+  "iloveyou", "loveyou", "love", "lovely", "lover", "loving", "baby", "babygirl", "babyboy",
+  "monkey", "dragon", "dragons", "football", "baseball", "basketball", "soccer", "hockey", "golf",
+  "tennis", "cricket", "sunshine", "princess", "prince", "queen", "king", "shadow", "superman",
+  "batman", "spiderman", "ironman", "starwars", "startrek", "pokemon", "naruto", "matrix", "ninja",
+  "pirate", "cowboy", "trustno", "whatever", "freedom", "hello", "hellothere", "hithere", "goodbye",
+  "charlie", "michael", "jessica", "ashley", "daniel", "jennifer", "thomas", "jordan", "hunter",
+  "ranger", "buster", "harley", "andrew", "tigger", "joshua", "pepper", "robert", "matthew", "william",
+  "anthony", "nicole", "michelle", "amanda", "summer", "winter", "spring", "autumn", "season",
+  "january", "february", "march", "april", "june", "july", "august", "september", "october",
+  "november", "december", "monday", "tuesday", "wednesday", "thursday", "friday", "saturday",
+  "sunday", "today", "tomorrow", "yesterday", "morning", "evening", "midnight", "weekend",
+  "cheese", "computer", "internet", "google", "samsung", "apple", "microsoft", "windows", "linux",
+  "android", "iphone", "facebook", "twitter", "instagram", "youtube", "amazon", "netflix", "mustang",
+  "ferrari", "porsche", "corvette", "mercedes", "maggie", "ginger", "chelsea", "arsenal", "liverpool",
+  "manchester", "barcelona", "madrid", "london", "paris", "newyork", "california", "texas", "florida",
+  "canada", "brazil", "america", "england", "flower", "flowers", "purple", "orange", "yellow",
+  "green", "blue", "black", "white", "red", "pink", "banana", "cherry", "lemon", "peach", "strawberry",
+  "cookie", "cookies", "chocolate", "coffee", "pizza", "pepsi", "cocacola", "killer", "family",
+  "friend", "friends", "forever", "angel", "angels", "happy", "lucky", "money", "power", "rainbow",
+  "silver", "golden", "gold", "diamond", "crystal", "phoenix", "thunder", "lightning", "storm",
+  "tiger", "lion", "wolf", "eagle", "falcon", "hawk", "panther", "jaguar", "shark", "dolphin",
+  "butterfly", "kitty", "kitten", "puppy", "doggy", "horse", "bear", "hammer", "guitar", "music",
+  "rock", "metal", "dance", "party", "beach", "ocean", "island", "sunset", "sunrise", "moon",
+  "star", "stars", "galaxy", "planet", "universe", "heaven", "jesus", "christ", "god", "blessed",
+  "peace", "faith", "hope", "trust", "office", "company", "business", "shop", "store", "retail",
+  "acme", "customer", "finance", "warehouse", "catalog", "manager", "staff", "super", "system",
+  "server", "network", "database", "oracle", "mysql", "postgres", "alpha", "beta", "gamma", "delta",
+  "omega", "sigma", "zeta", "victory", "winner", "champion", "legend", "hero", "magic", "wizard",
+  "merlin", "secretpassword", "mypassword", "yourpassword", "newpassword", "oldpassword",
+  "superstar", "rockstar", "monster", "zombie", "vampire", "soldier", "sniper", "warrior", "knight",
+  "samurai", "viking", "spartan", "gladiator", "doctor", "nurse", "teacher", "student", "school",
+  "college", "university", "player", "gamer", "games", "xbox", "playstation", "nintendo", "minecraft",
+  "fortnite", "computer", "laptop", "keyboard", "mouse", "monitor", "printer", "letmeinnow",
+  "opensesame", "abracadabra", "qwerasdf", "asdfqwer", "iloveu", "hotmail", "gmail", "yahoo",
+  "outlook", "bitcoin", "crypto", "dollar", "euro", "credit", "bank", "banking", "payment", "paypal",
+  "stripe", "vercel", "supabase", "nextjs", "react", "javascript", "python", "java", "coding",
+  "developer", "engineer", "hacker", "hacking", "cyber", "matrix", "neo", "trinity", "zion",
+];

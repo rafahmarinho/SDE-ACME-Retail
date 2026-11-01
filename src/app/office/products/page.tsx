@@ -2,28 +2,61 @@
 
 import { FormEvent, useEffect, useState } from "react";
 import { ErrorState, LoadingState } from "@/components/states";
+import { apiSend } from "@/lib/api-client";
 
 interface Row { product: { id: string; name: string; category: string; active: boolean; description: string }; minPrice: number }
 
 export default function ProductsOffice() {
   const [rows, setRows] = useState<Row[]>([]);
+  const [nextCursor, setNextCursor] = useState<string | null>(null);
   const [error, setError] = useState("");
+  const [message, setMessage] = useState("");
   const [q, setQ] = useState("");
   const [ready, setReady] = useState(false);
+  const [reloadKey, setReloadKey] = useState(0);
 
-  async function load() {
-    const response = await fetch("/api/catalog");
+  useEffect(() => {
+    let active = true;
+    fetch("/api/catalog").then(async (response) => {
+      const body = await response.json();
+      if (!active) return;
+      if (!response.ok) setError(body.error ?? "Could not load products.");
+      else {
+        setRows(body.products);
+        setNextCursor(body.nextCursor ?? null);
+      }
+      setReady(true);
+    });
+    return () => {
+      active = false;
+    };
+  }, [reloadKey]);
+
+  async function loadMore() {
+    if (!nextCursor) return;
+    const response = await fetch(`/api/catalog?cursor=${encodeURIComponent(nextCursor)}`);
     const body = await response.json();
-    if (!response.ok) setError(body.error ?? "Could not load products.");
-    else setRows(body.products);
-    setReady(true);
+    if (!response.ok) setError(body.error ?? "Could not load more products.");
+    else {
+      setRows((current) => [...current, ...body.products]);
+      setNextCursor(body.nextCursor ?? null);
+    }
   }
-  useEffect(() => { void load(); }, []);
+
+  // Product update e-mails go only to customers who opted in (checked on the server when sending).
+  async function announce(productId: string) {
+    setError("");
+    setMessage("");
+    const response = await apiSend(`/api/office/products/${productId}/announce`, { method: "POST", headers: { "Content-Type": "application/json" } });
+    const body = await response.json();
+    if (!response.ok) setError(body.error ?? "Could not send the product update.");
+    else setMessage(`Product update sent to ${body.sent} customer(s) who opted in.`);
+  }
 
   async function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     const form = new FormData(event.currentTarget);
-    const response = await fetch("/api/office/products", {
+    const response = await apiSend("/api/office/products", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
@@ -36,7 +69,7 @@ export default function ProductsOffice() {
     });
     const body = await response.json();
     if (!response.ok) setError(body.error ?? "Could not save the product.");
-    else void load();
+    else setReloadKey((key) => key + 1);
   }
 
   if (!ready) return <LoadingState label="Loading catalog office..." />;
@@ -47,9 +80,16 @@ export default function ProductsOffice() {
         <h1 className="text-3xl font-semibold">Products</h1>
         <input className="field mt-3" placeholder="Filter products" value={q} onChange={(event) => setQ(event.target.value)} />
         {error ? <div className="mt-3"><ErrorState message={error} /></div> : null}
+        {message ? <p className="banner-ok mt-3">{message}</p> : null}
         <div className="mt-4 space-y-2">
-          {visible.map((row) => <article key={row.product.id} className="panel p-3"><strong>{row.product.name}</strong><p className="text-sm text-muted">{row.product.category} · ${(row.minPrice / 100).toFixed(2)}</p></article>)}
+          {visible.map((row) => (
+            <article key={row.product.id} className="panel flex items-center justify-between gap-3 p-3">
+              <div><strong>{row.product.name}</strong><p className="text-sm text-muted">{row.product.category} · ${(row.minPrice / 100).toFixed(2)}</p></div>
+              <button className="btn secondary" type="button" onClick={() => void announce(row.product.id)}>E-mail update</button>
+            </article>
+          ))}
         </div>
+        {nextCursor ? <button className="btn secondary mt-3" type="button" onClick={() => void loadMore()}>Load more</button> : null}
       </div>
       <form className="panel space-y-2 p-4" onSubmit={(event) => void submit(event)}>
         <h2 className="font-semibold">Add product</h2>

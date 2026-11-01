@@ -3,56 +3,68 @@
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { FormEvent, useEffect, useState } from "react";
-import type { PublicUser, Role } from "@/lib/types";
+import type { PublicUser } from "@/lib/types";
+import type { Permission } from "@/lib/policy";
 import { formatMoney } from "@/lib/money";
+import { apiSend, rememberCsrfToken } from "@/lib/api-client";
 
 type CartItem = { qty: number; product: { name: string; slug: string }; variant: { id: string; label: string; priceCents: number } };
 
-const officeLinks: Record<Role, { href: string; label: string }[]> = {
-  customer: [],
-  catalog: [{ href: "/office/products", label: "Products" }],
-  warehouse: [
-    { href: "/office/inventory", label: "Inventory" },
-    { href: "/office/orders", label: "Fulfillment" },
-  ],
-  finance: [
-    { href: "/office/orders", label: "Orders" },
-    { href: "/office/refunds", label: "Refunds" },
-  ],
-  administrator: [
-    { href: "/office/products", label: "Products" },
-    { href: "/office/inventory", label: "Inventory" },
-    { href: "/office/orders", label: "Orders" },
-    { href: "/office/refunds", label: "Refunds" },
-    { href: "/office/scenarios", label: "Scenarios" },
-  ],
-};
+// Navigation only mirrors the permissions the server returns; the server enforces them.
+const officeLinks: { permission: Permission; href: string; label: string }[] = [
+  { permission: "catalog.manage", href: "/office/products", label: "Products" },
+  { permission: "inventory.view", href: "/office/inventory", label: "Inventory" },
+  { permission: "orders.view", href: "/office/orders", label: "Orders" },
+  { permission: "refunds.view", href: "/office/refunds", label: "Refunds" },
+  { permission: "scenarios.manage", href: "/office/scenarios", label: "Scenarios" },
+  { permission: "events.view", href: "/office/audit", label: "Audit" },
+];
 
 export function SiteHeader() {
   const router = useRouter();
   const pathname = usePathname();
   const [user, setUser] = useState<PublicUser | null>(null);
+  const [permissions, setPermissions] = useState<Permission[]>([]);
   const [query, setQuery] = useState("");
   const [open, setOpen] = useState(false);
   const [cart, setCart] = useState<{ items: CartItem[]; subtotalCents: number }>({ items: [], subtotalCents: 0 });
   const [error, setError] = useState("");
-
-  async function refresh() {
-    const [session, cartResponse] = await Promise.all([fetch("/api/session"), fetch("/api/cart")]);
-    if (session.ok) setUser((await session.json()).user);
-    if (cartResponse.ok) setCart(await cartResponse.json());
-  }
+  const [refreshKey, setRefreshKey] = useState(0);
 
   useEffect(() => {
-    void refresh();
-    const onCart = () => void refresh();
+    const onCart = () => setRefreshKey((key) => key + 1);
     window.addEventListener("acme-cart", onCart);
     window.addEventListener("focus", onCart);
     return () => {
       window.removeEventListener("acme-cart", onCart);
       window.removeEventListener("focus", onCart);
     };
-  }, [pathname]);
+  }, []);
+
+  useEffect(() => {
+    let active = true;
+    Promise.all([fetch("/api/session"), fetch("/api/cart")]).then(async ([session, cartResponse]) => {
+      const sessionBody = session.ok ? await session.json() : null;
+      const cartBody = cartResponse.ok ? await cartResponse.json() : null;
+      if (!active) return;
+      if (sessionBody) {
+        rememberCsrfToken(sessionBody.csrfToken);
+        setUser(sessionBody.user);
+        setPermissions(sessionBody.permissions ?? []);
+      }
+      if (cartBody) setCart(cartBody);
+    });
+    return () => {
+      active = false;
+    };
+  }, [pathname, refreshKey]);
+
+  async function signOut() {
+    await apiSend("/api/auth/logout", { method: "POST", headers: { "Content-Type": "application/json" } });
+    setUser(null);
+    setPermissions([]);
+    router.push("/");
+  }
 
   function search(event: FormEvent) {
     event.preventDefault();
@@ -61,7 +73,7 @@ export function SiteHeader() {
 
   async function updateQty(variantId: string, qty: number) {
     setError("");
-    const response = await fetch("/api/cart", {
+    const response = await apiSend("/api/cart", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ variantId, qty }),
@@ -71,7 +83,7 @@ export function SiteHeader() {
     else setCart(body);
   }
 
-  const links = user ? officeLinks[user.role] : [];
+  const links = user ? officeLinks.filter((link) => permissions.includes(link.permission)) : [];
 
   return (
     <header className="sticky top-0 z-30 border-b border-line bg-surface/95 backdrop-blur">
@@ -82,8 +94,9 @@ export function SiteHeader() {
         </form>
         <nav className="ml-auto flex items-center gap-3 text-sm">
           <Link href="/catalog">Catalog</Link>
-          {user?.role === "customer" || !user ? <Link href="/wishlist">Wishlist</Link> : null}
+          {!user || permissions.includes("orders.purchase") ? <Link href="/wishlist">Wishlist</Link> : null}
           {user ? <Link href="/account/orders">Orders</Link> : <Link href="/login">Sign in</Link>}
+          {user ? <button className="btn secondary" type="button" onClick={() => void signOut()}>Sign out</button> : null}
           <button className="btn secondary" type="button" onClick={() => setOpen(true)}>Cart ({cart.items.reduce((sum, item) => sum + item.qty, 0)})</button>
         </nav>
       </div>
