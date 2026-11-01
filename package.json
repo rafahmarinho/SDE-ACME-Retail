@@ -12,10 +12,10 @@
     "test": "tsx --test src/services/retail.test.ts src/services/auth.test.ts src/lib/policy.test.ts src/lib/security.test.ts src/lib/config.test.ts src/lib/db/store.test.ts src/lib/query-limits.test.ts src/lib/privacy-rules.test.ts src/lib/api-contract.test.ts src/lib/release.test.ts src/lib/totp.test.ts src/lib/keys.test.ts src/lib/audit.test.ts src/proxy.test.ts src/app/api/api.test.ts"
   },
   "dependencies": {
-    "@supabase/supabase-js": "^2.117.3",
-    "next": "16.4.0",
-    "react": "19.3.0",
-    "react-dom": "19.3.0",
+    "@supabase/supabase-js": "^2.118.0",
+    "next": "16.4.3",
+    "react": "19.3.1",
+    "react-dom": "19.3.1",
     "zod": "^4.6.7"
   },
   "devDependencies": {
@@ -24,7 +24,7 @@
     "@types/react": "^19",
     "@types/react-dom": "^19",
     "eslint": "^9",
-    "eslint-config-next": "16.4.0",
+    "eslint-config-next": "16.4.3",
     "tailwindcss": "^4",
     "tsx": "^4.23.15",
     "typescript": "^5"
